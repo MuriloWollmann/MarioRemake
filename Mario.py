@@ -12,6 +12,9 @@ GRAVIDADE = -9.8
 PULO = 4.0
 VEL = 0.8
 
+# Posição da chegada
+CHEGADA_X = 5.0
+
 def carregar_textura(path):
     imagem = Image.open(path)
     imagem = imagem.transpose(Image.FLIP_TOP_BOTTOM)
@@ -42,7 +45,6 @@ def desenhar_player(x, y):
     glEnd()
 
 def desenhar_chao(camera_x):
-    # base verde
     glColor3f(0.2, 0.8, 0.2)
     glBegin(GL_QUADS)
     glVertex2f(-1, -1)
@@ -51,7 +53,6 @@ def desenhar_chao(camera_x):
     glVertex2f(-1, -0.5)
     glEnd()
 
-    # listras (movimento)
     glColor3f(0.1, 0.6, 0.1)
 
     passo = 0.2
@@ -66,6 +67,27 @@ def desenhar_chao(camera_x):
         glVertex2f(x, -0.5)
         glEnd()
         x += passo
+
+def desenhar_chegada(x_mundo, camera_x):
+    x_tela = x_mundo - camera_x
+
+    # poste
+    glColor3f(0.8, 0.8, 0.8)
+    glBegin(GL_QUADS)
+    glVertex2f(x_tela, -0.5)
+    glVertex2f(x_tela + 0.02, -0.5)
+    glVertex2f(x_tela + 0.02, 0.3)
+    glVertex2f(x_tela, 0.3)
+    glEnd()
+
+    # bandeira
+    glColor3f(1, 1, 0)
+    glBegin(GL_QUADS)
+    glVertex2f(x_tela + 0.02, 0.2)
+    glVertex2f(x_tela + 0.2, 0.2)
+    glVertex2f(x_tela + 0.2, 0.3)
+    glVertex2f(x_tela + 0.02, 0.3)
+    glEnd()
 
 def main():
     if not glfw.init():
@@ -82,6 +104,7 @@ def main():
     no_chao = True
 
     camera_x = 0
+    venceu = False
 
     espaco_pressionado = False
     tempo_anterior = time.time()
@@ -124,22 +147,31 @@ def main():
 
         # Câmera segue o player
         camera_x = x
-
-        # NÃO deixa a câmera voltar além do início
         if camera_x < 0:
             camera_x = 0
 
-        # Limite visual na esquerda (player não sai da tela)
+        # Limite visual esquerdo
         x_tela = x - camera_x
         if x_tela < -1:
             x = camera_x - 1
 
+        # Verifica vitória
+        if x >= CHEGADA_X:
+            venceu = True
+
         # Desenho
         desenhar_chao(camera_x)
+        desenhar_chegada(CHEGADA_X, camera_x)
         desenhar_player(x - camera_x, y)
 
         glfw.swap_buffers(janela)
         glfw.poll_events()
+
+        # Finalização
+        if venceu:
+            print("VOCE VENCEU")
+            time.sleep(2)
+            break
 
     glfw.terminate()
 
