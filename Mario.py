@@ -10,7 +10,7 @@ PLAYER_H = 0.2
 
 GRAVIDADE = -9.8
 PULO = 4.0
-VEL = 0.8  # velocidade ajustada
+VEL = 0.8
 
 def carregar_textura(path):
     imagem = Image.open(path)
@@ -41,7 +41,8 @@ def desenhar_player(x, y):
     glVertex2f(x, y + PLAYER_H)
     glEnd()
 
-def desenhar_chao():
+def desenhar_chao(camera_x):
+    # base verde
     glColor3f(0.2, 0.8, 0.2)
     glBegin(GL_QUADS)
     glVertex2f(-1, -1)
@@ -49,6 +50,22 @@ def desenhar_chao():
     glVertex2f(1, -0.5)
     glVertex2f(-1, -0.5)
     glEnd()
+
+    # listras (movimento)
+    glColor3f(0.1, 0.6, 0.1)
+
+    passo = 0.2
+    deslocamento = camera_x % passo
+
+    x = -1 - deslocamento
+    while x < 1:
+        glBegin(GL_QUADS)
+        glVertex2f(x, -1)
+        glVertex2f(x + 0.05, -1)
+        glVertex2f(x + 0.05, -0.5)
+        glVertex2f(x, -0.5)
+        glEnd()
+        x += passo
 
 def main():
     if not glfw.init():
@@ -64,8 +81,9 @@ def main():
     vel_y = 0
     no_chao = True
 
-    espaco_pressionado = False
+    camera_x = 0
 
+    espaco_pressionado = False
     tempo_anterior = time.time()
 
     while not glfw.window_should_close(janela):
@@ -77,12 +95,14 @@ def main():
         tempo_anterior = tempo_atual
         dt = min(dt, 0.05)
 
+        # Movimento lateral
         if glfw.get_key(janela, glfw.KEY_D):
             x += VEL * dt
 
         if glfw.get_key(janela, glfw.KEY_A):
             x -= VEL * dt
 
+        # Pulo
         if glfw.get_key(janela, glfw.KEY_SPACE) == glfw.PRESS:
             if not espaco_pressionado and no_chao:
                 vel_y = PULO
@@ -91,17 +111,32 @@ def main():
         else:
             espaco_pressionado = False
 
+        # Gravidade
         vel_y += GRAVIDADE * dt
         y += vel_y * dt
 
+        # Colisão com chão
         altura_chao = -0.5
         if y <= altura_chao:
             y = altura_chao
             vel_y = 0
             no_chao = True
 
-        desenhar_chao()
-        desenhar_player(x, y)
+        # Câmera segue o player
+        camera_x = x
+
+        # NÃO deixa a câmera voltar além do início
+        if camera_x < 0:
+            camera_x = 0
+
+        # Limite visual na esquerda (player não sai da tela)
+        x_tela = x - camera_x
+        if x_tela < -1:
+            x = camera_x - 1
+
+        # Desenho
+        desenhar_chao(camera_x)
+        desenhar_player(x - camera_x, y)
 
         glfw.swap_buffers(janela)
         glfw.poll_events()
