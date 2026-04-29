@@ -1,8 +1,6 @@
 import glfw
 from OpenGL.GL import *
 import time
-from PIL import Image
-import numpy as np
 
 # Configurações do player e física
 PLAYER_W = 0.1
@@ -12,28 +10,12 @@ GRAVIDADE = -9.8
 PULO = 4.0
 VEL = 0.8
 
-# Posição da chegada
+# Mundo
+CHAO_INICIO = -5
+CHAO_FIM = 10
+
+# Chegada
 CHEGADA_X = 5.0
-
-def carregar_textura(path):
-    imagem = Image.open(path)
-    imagem = imagem.transpose(Image.FLIP_TOP_BOTTOM)
-    img_data = np.array(imagem.convert("RGBA"), dtype=np.uint8)
-
-    textura = glGenTextures(1)
-    glBindTexture(GL_TEXTURE_2D, textura)
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                 imagem.width, imagem.height,
-                 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data)
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
-
-    return textura
 
 def desenhar_player(x, y):
     glColor3f(1, 0, 0)
@@ -45,27 +27,37 @@ def desenhar_player(x, y):
     glEnd()
 
 def desenhar_chao(camera_x):
+    altura_topo = -0.5
+
+    # chão no mundo (0 até 10)
+    x_inicio_tela = CHAO_INICIO - camera_x
+    x_fim_tela = CHAO_FIM - camera_x
+
+    # base
     glColor3f(0.2, 0.8, 0.2)
     glBegin(GL_QUADS)
-    glVertex2f(-1, -1)
-    glVertex2f(1, -1)
-    glVertex2f(1, -0.5)
-    glVertex2f(-1, -0.5)
+    glVertex2f(x_inicio_tela, -1)
+    glVertex2f(x_fim_tela, -1)
+    glVertex2f(x_fim_tela, altura_topo)
+    glVertex2f(x_inicio_tela, altura_topo)
     glEnd()
 
+    # listras PRESAS AO MUNDO
     glColor3f(0.1, 0.6, 0.1)
 
     passo = 0.2
-    deslocamento = camera_x % passo
+    x = CHAO_INICIO
 
-    x = -1 - deslocamento
-    while x < 1:
+    while x < CHAO_FIM:
+        x_tela = x - camera_x
+
         glBegin(GL_QUADS)
-        glVertex2f(x, -1)
-        glVertex2f(x + 0.05, -1)
-        glVertex2f(x + 0.05, -0.5)
-        glVertex2f(x, -0.5)
+        glVertex2f(x_tela, -1)
+        glVertex2f(x_tela + 0.05, -1)
+        glVertex2f(x_tela + 0.05, altura_topo)
+        glVertex2f(x_tela, altura_topo)
         glEnd()
+
         x += passo
 
 def desenhar_chegada(x_mundo, camera_x):
@@ -118,7 +110,7 @@ def main():
         tempo_anterior = tempo_atual
         dt = min(dt, 0.05)
 
-        # Movimento lateral
+        # Movimento
         if glfw.get_key(janela, glfw.KEY_D):
             x += VEL * dt
 
@@ -139,23 +131,22 @@ def main():
         y += vel_y * dt
 
         # Colisão com chão
-        altura_chao = -0.5
-        if y <= altura_chao:
-            y = altura_chao
+        if y <= -0.5:
+            y = -0.5
             vel_y = 0
             no_chao = True
 
-        # Câmera segue o player
+        # Câmera (Mario-like)
         camera_x = x
         if camera_x < 0:
             camera_x = 0
 
-        # Limite visual esquerdo
+        # Limite esquerdo da tela
         x_tela = x - camera_x
         if x_tela < -1:
             x = camera_x - 1
 
-        # Verifica vitória
+        # Vitória
         if x >= CHEGADA_X:
             venceu = True
 
@@ -167,7 +158,6 @@ def main():
         glfw.swap_buffers(janela)
         glfw.poll_events()
 
-        # Finalização
         if venceu:
             print("VOCE VENCEU")
             time.sleep(2)
