@@ -1,10 +1,13 @@
 from pathlib import Path
 import time
 
+
 import glfw
 from OpenGL.GL import *
 from PIL import Image
 import numpy as np
+
+from tela_vitoria_derrota import mostrar_tela
 
 from game_logic import (
     GROUND_Y,
@@ -530,15 +533,33 @@ def main():
         glfw.swap_buffers(janela)
         glfw.poll_events()
 
+
+
         if estado_jogo.vidas <= 0:
-            print("VOCE PERDEU")
-            time.sleep(2)
-            break
+             reiniciar = mostrar_tela(vitoria=False, janela=janela)
+
+             if reiniciar:
+                glfw.destroy_window(janela)
+                glfw.terminate()
+                main()
+                return
+
+             else:
+                glfw.set_window_should_close(janela, True)
 
         if venceu:
-            print("VOCE VENCEU")
-            time.sleep(2)
-            break
+              reiniciar = mostrar_tela(vitoria=True, janela=janela)
+
+              if reiniciar:
+                glfw.destroy_window(janela)
+                glfw.terminate()
+                main()
+                return
+
+              else:
+                glfw.set_window_should_close(janela, True)
+        
+ 
 
     glfw.terminate()
 
