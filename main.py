@@ -8,6 +8,16 @@ from OpenGL.GL import *
 from PIL import Image
 import numpy as np
 
+from audio import (
+    encerrar_audio,
+    iniciar_audio,
+    tocar_ataque_lobo,
+    tocar_morte_lobo,
+    tocar_musica_derrota,
+    tocar_musica_fundo,
+    tocar_musica_vitoria,
+    tocar_tiro,
+)
 from tela_vitoria_derrota import mostrar_tela, desenhar_texto, texto_larg
 
 from game_logic import (
@@ -37,6 +47,7 @@ CENARIO_ASSETS = (
     ("fundo4.png", "chao4.png"),
     ("fundo5.png", "chao5.png"),
 )
+TOTAL_FASES = len(CENARIO_ASSETS)
 FULLSCREEN = True
 WINDOWED_WIDTH = 1280
 WINDOWED_HEIGHT = 720
@@ -69,11 +80,16 @@ CHAO_BASE = -WORLD_VIEW_HALF_HEIGHT - 0.08
 ANIM_FPS = 0.12
 
 # HUD
-VIDAS_INICIAIS = 3
+VIDAS_INICIAIS = 4
 HUD_VIDA_TAMANHO = 0.12
 HUD_VIDA_ESPACAMENTO = 0.02
 HUD_VIDA_X = -0.95
 HUD_VIDA_TOPO = 0.97
+VIDA_BAR_TEXTURE_NAMES = ("vida1.png", "vida2.png", "vida3.png", "vida4.png")
+VIDA_BAR_X = -0.96
+VIDA_BAR_TOP = 0.96
+VIDA_BAR_DRAW_W = 0.64
+VIDA_BAR_DRAW_H = 0.135
 HUD_FASE_TAMANHO = 0.003
 HUD_FASE_DIREITA = 0.95
 HUD_FASE_Y = 0.88
@@ -89,6 +105,12 @@ HUNTER_DRAW_SIZES = {
     HUNTER_TYPE_SCOUT: (0.26, 0.37),
     HUNTER_TYPE_BRUTE: (0.38, 0.47),
 }
+BANDEIRA_DRAW_W = 0.46
+BANDEIRA_DRAW_H = 0.90
+PLAYER_ATTACK_DRAW_W = PLAYER_W
+PLAYER_ATTACK_DRAW_H = PLAYER_H
+PLAYER_ATTACK_FRAME_TIME = 0.12
+PLAYER_ATTACK_DURATION = PLAYER_ATTACK_FRAME_TIME * 3
 PLAYER_GRASS_SINK = 0.12
 HUNTER_GRASS_SINK = 0.10
 PLAYER_HITBOX_MARGIN_X = 0.12
@@ -175,10 +197,7 @@ def desenhar_chao(tex_chao, camera_x):
     largura_mundo = CHAO_FIM - CHAO_INICIO
     repeticoes = largura_mundo / 0.6
 
-    uv_y1 = 0.0
-    uv_y2 = 1.0
-
-    desenhar_quad_texturizado(x_inicio_tela, CHAO_BASE, x_fim_tela, CHAO_TOPO, 0, uv_y1, repeticoes, uv_y2)
+    desenhar_quad_texturizado(x_inicio_tela, CHAO_BASE, x_fim_tela, CHAO_TOPO, 0, 0.0, repeticoes, 1.0)
 
     glDisable(GL_TEXTURE_2D)
 
@@ -195,11 +214,31 @@ def tamanho_desenho_cacador(enemy_type):
     return HUNTER_DRAW_SIZES.get(enemy_type, HUNTER_DRAW_SIZES[HUNTER_TYPE_GUNNER])
 
 
-def desenhar_player(frames_run, frames_jump, tex_idle, x, y, no_chao, movendo, virado_esquerda, frame_anim):
+def player_attack_frame_index(attack_timer):
+    elapsed = max(0.0, PLAYER_ATTACK_DURATION - attack_timer)
+    return min(2, int(elapsed / PLAYER_ATTACK_FRAME_TIME))
+
+
+def desenhar_player(
+    frames_run,
+    frames_jump,
+    frames_attack,
+    tex_idle,
+    x,
+    y,
+    no_chao,
+    movendo,
+    virado_esquerda,
+    frame_anim,
+    attack_timer,
+):
     glEnable(GL_TEXTURE_2D)
     glColor3f(1, 1, 1)
 
-    if not no_chao:
+    attack_active = attack_timer > 0.0
+    if attack_active:
+        glBindTexture(GL_TEXTURE_2D, frames_attack[player_attack_frame_index(attack_timer)])
+    elif not no_chao:
         sequencia = [0, 1, 2, 0]
         idx = sequencia[frame_anim % len(sequencia)]
         glBindTexture(GL_TEXTURE_2D, frames_jump[idx])
@@ -211,10 +250,12 @@ def desenhar_player(frames_run, frames_jump, tex_idle, x, y, no_chao, movendo, v
         glBindTexture(GL_TEXTURE_2D, tex_idle)
 
     visual_y = calcular_y_visual_player(y)
+    draw_w = PLAYER_ATTACK_DRAW_W if attack_active else PLAYER_W
+    draw_h = PLAYER_ATTACK_DRAW_H if attack_active else PLAYER_H
     if virado_esquerda:
-        desenhar_quad_texturizado(x + PLAYER_W, visual_y, x, visual_y + PLAYER_H)
+        desenhar_quad_texturizado(x + PLAYER_W, visual_y, x + PLAYER_W - draw_w, visual_y + draw_h)
     else:
-        desenhar_quad_texturizado(x, visual_y, x + PLAYER_W, visual_y + PLAYER_H)
+        desenhar_quad_texturizado(x, visual_y, x + draw_w, visual_y + draw_h)
 
     glDisable(GL_TEXTURE_2D)
 
@@ -225,8 +266,12 @@ def desenhar_chegada(tex_bandeira, x_mundo, camera_x):
     glColor3f(1, 1, 1)
 
     x_tela = x_mundo - camera_x
-
-    desenhar_quad_texturizado(x_tela, CHAO_TOPO, x_tela + 0.2, CHAO_TOPO + 0.8)
+    desenhar_quad_texturizado(
+        x_tela,
+        CHAO_TOPO,
+        x_tela + BANDEIRA_DRAW_W,
+        CHAO_TOPO + BANDEIRA_DRAW_H,
+    )
 
     glDisable(GL_TEXTURE_2D)
 
@@ -247,13 +292,19 @@ def calcular_posicoes_vidas(vidas):
 
 def desenhar_hud_vidas(tex_vida, vidas):
     glEnable(GL_TEXTURE_2D)
-    glBindTexture(GL_TEXTURE_2D, tex_vida)
+    glBindTexture(GL_TEXTURE_2D, tex_vida[vida_texture_name(vidas)])
     glColor3f(1, 1, 1)
 
-    for x1, y1, x2, y2 in calcular_posicoes_vidas(vidas):
-        desenhar_quad_texturizado(x1, y1, x2, y2)
+    y2 = VIDA_BAR_TOP
+    y1 = y2 - VIDA_BAR_DRAW_H
+    desenhar_quad_texturizado(VIDA_BAR_X, y1, VIDA_BAR_X + VIDA_BAR_DRAW_W, y2)
 
     glDisable(GL_TEXTURE_2D)
+
+
+def vida_texture_name(vidas):
+    vidas_visuais = max(1, min(VIDAS_INICIAIS, int(vidas)))
+    return f"vida{vidas_visuais}.png"
 
 
 def texto_fase(fase):
@@ -290,12 +341,11 @@ def calcular_camera_x(player_x):
     return max(0.0, player_x + CAMERA_LOOK_AHEAD)
 
 
-def selecionar_textura_cacador(hunter, tex_hunter_idle, tex_hunter_aim=None, tex_hunter_shoot=None, frame_anim=0):
-    if isinstance(tex_hunter_idle, dict):
-        texturas = tex_hunter_idle.get(hunter.enemy_type, tex_hunter_idle[HUNTER_TYPE_GUNNER])
-        tex_hunter_idle = texturas["idle"]
-        tex_hunter_aim = texturas["aim"]
-        tex_hunter_shoot = texturas["shoot"]
+def selecionar_textura_cacador(hunter, texturas_inimigos, frame_anim=0):
+    texturas = texturas_inimigos.get(hunter.enemy_type, texturas_inimigos[HUNTER_TYPE_GUNNER])
+    tex_hunter_idle = texturas["idle"]
+    tex_hunter_aim = texturas["aim"]
+    tex_hunter_shoot = texturas["shoot"]
 
     if hunter.shoot_flash > 0:
         return tex_hunter_shoot
@@ -391,7 +441,10 @@ def carregar_texturas_do_jogo():
         for fundo, chao in CENARIO_ASSETS
     ]
     tex_bandeira = carregar_textura("bandeira.png")
-    tex_vida = carregar_textura("vida.png")
+    tex_vida = {
+        texture_name: carregar_textura(texture_name)
+        for texture_name in VIDA_BAR_TEXTURE_NAMES
+    }
     tex_idle = carregar_textura("player.png")
     texturas_inimigos = {
         HUNTER_TYPE_GUNNER: carregar_texturas_inimigo("hunter"),
@@ -415,6 +468,11 @@ def carregar_texturas_do_jogo():
         carregar_textura("Jump2.png"),
         carregar_textura("Jump3.png"),
     ]
+    frames_attack = [
+        carregar_textura("Attack.png"),
+        carregar_textura("Attack2.png"),
+        carregar_textura("Attack3.png"),
+    ]
 
     return (
         cenarios,
@@ -423,6 +481,7 @@ def carregar_texturas_do_jogo():
         tex_idle,
         frames_run,
         frames_jump,
+        frames_attack,
         texturas_inimigos,
         tex_bullet,
         tex_hunter_death,
@@ -472,6 +531,32 @@ def criar_janela_jogo():
     return glfw.create_window(WINDOWED_WIDTH, WINDOWED_HEIGHT, "Jogo", None, None)
 
 
+def reiniciar_jogo(janela):
+    encerrar_audio()
+    glfw.destroy_window(janela)
+    glfw.terminate()
+    main()
+
+
+def avancar_para_proxima_fase(fase_atual, estado_jogo, cenarios, indice_cenario, janela):
+    fase_atual += 1
+    indice_cenario = escolher_indice_cenario(fase_atual, len(cenarios), indice_cenario)
+    estado_jogo = criar_estado_fase(estado_jogo.vidas, fase_atual)
+    glfw.set_window_title(janela, f"Jogo - Fase {fase_atual}")
+    return fase_atual, estado_jogo, indice_cenario
+
+
+def deve_continuar_para_proxima_fase(fase_atual):
+    return fase_atual < TOTAL_FASES
+
+
+def texto_botao_vitoria_fase(fase_atual):
+    if deve_continuar_para_proxima_fase(fase_atual):
+        return "[R] CONTINUAR"
+
+    return "[R] JOGAR NOVAMENTE"
+
+
 def main():
     if not glfw.init():
         print("Erro ao inicializar GLFW.")
@@ -492,6 +577,8 @@ def main():
 
     glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    iniciar_audio()
+    tocar_musica_fundo()
 
     try:
         (
@@ -501,12 +588,14 @@ def main():
             tex_idle,
             frames_run,
             frames_jump,
+            frames_attack,
             texturas_inimigos,
             tex_bullet,
             tex_hunter_death,
         ) = carregar_texturas_do_jogo()
     except AssetError as exc:
         print(exc)
+        encerrar_audio()
         glfw.terminate()
         return
 
@@ -526,6 +615,7 @@ def main():
     virado_esquerda = False
     frame_anim = 0
     tempo_anim = 0.0
+    attack_timer = 0.0
 
     tempo_anterior = time.time()
 
@@ -575,6 +665,7 @@ def main():
         if tempo_anim >= ANIM_FPS:
             tempo_anim -= ANIM_FPS
             frame_anim += 1
+        attack_timer = max(0.0, attack_timer - dt)
 
         camera_x = calcular_camera_x(x)
 
@@ -583,10 +674,31 @@ def main():
             x = camera_x - WORLD_VIEW_HALF_WIDTH
 
         if x >= CHEGADA_X:
-            fase_atual += 1
-            indice_cenario = escolher_indice_cenario(fase_atual, len(cenarios), indice_cenario)
-            estado_jogo = criar_estado_fase(estado_jogo.vidas, fase_atual)
-            glfw.set_window_title(janela, f"Jogo - Fase {fase_atual}")
+            continuar_para_proxima = deve_continuar_para_proxima_fase(fase_atual)
+            tocar_musica_vitoria()
+            continuar = mostrar_tela(
+                vitoria=True,
+                janela=janela,
+                texto_primario=texto_botao_vitoria_fase(fase_atual),
+            )
+
+            if not continuar:
+                glfw.set_window_should_close(janela, True)
+                continue
+
+            if not continuar_para_proxima:
+                reiniciar_jogo(janela)
+                return
+
+            tocar_musica_fundo()
+
+            fase_atual, estado_jogo, indice_cenario = avancar_para_proxima_fase(
+                fase_atual,
+                estado_jogo,
+                cenarios,
+                indice_cenario,
+                janela,
+            )
 
             x = 0.0
             y = CHAO_TOPO
@@ -597,14 +709,25 @@ def main():
             virado_esquerda = False
             frame_anim = 0
             tempo_anim = 0.0
+            attack_timer = 0.0
             tempo_anterior = time.time()
             continue
 
         player_box = calcular_hitbox_player(x, y)
         player_center = center_of_box(player_box)
 
+        balas_antes = len(estado_jogo.bullets)
+        mortes_antes = len(estado_jogo.blood_effects)
+
         update_hunters_and_spawns(estado_jogo, dt, camera_x, player_center, level=fase_atual)
+        if len(estado_jogo.bullets) > balas_antes:
+            tocar_tiro()
+
         update_player_hunter_combat(estado_jogo, player_box)
+        if len(estado_jogo.blood_effects) > mortes_antes:
+            attack_timer = PLAYER_ATTACK_DURATION
+            tocar_ataque_lobo()
+
         update_bullets_and_damage(estado_jogo, dt, player_box)
         update_blood_effects(estado_jogo, dt)
 
@@ -617,7 +740,19 @@ def main():
         desenhar_mortes_cacador(estado_jogo.blood_effects, tex_hunter_death, camera_x)
         desenhar_cacadores(estado_jogo.hunters, texturas_inimigos, camera_x, frame_anim)
         desenhar_balas(estado_jogo.bullets, tex_bullet, camera_x)
-        desenhar_player(frames_run, frames_jump, tex_idle, x - camera_x, y, no_chao, movendo, virado_esquerda, frame_anim)
+        desenhar_player(
+            frames_run,
+            frames_jump,
+            frames_attack,
+            tex_idle,
+            x - camera_x,
+            y,
+            no_chao,
+            movendo,
+            virado_esquerda,
+            frame_anim,
+            attack_timer,
+        )
 
         configurar_projecao_hud()
         desenhar_hud_vidas(tex_vida, estado_jogo.vidas)
@@ -626,20 +761,18 @@ def main():
         glfw.swap_buffers(janela)
         glfw.poll_events()
 
-
-
         if estado_jogo.vidas <= 0:
-             reiniciar = mostrar_tela(vitoria=False, janela=janela)
+            tocar_morte_lobo()
+            tocar_musica_derrota()
+            reiniciar = mostrar_tela(vitoria=False, janela=janela)
 
-             if reiniciar:
-                glfw.destroy_window(janela)
-                glfw.terminate()
-                main()
+            if reiniciar:
+                reiniciar_jogo(janela)
                 return
 
-             else:
-                glfw.set_window_should_close(janela, True)
+            glfw.set_window_should_close(janela, True)
 
+    encerrar_audio()
     glfw.terminate()
 
 

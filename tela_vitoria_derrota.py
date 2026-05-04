@@ -293,13 +293,25 @@ def desenhar_titulo(elapsed, vitoria):
 # ─────────────────────────────────────────────
 #  BOTÕES
 # ─────────────────────────────────────────────
-def desenhar_botoes(elapsed, vitoria):
+def botoes_para_tela(vitoria, texto_primario=None):
+    if vitoria:
+        return [
+            (texto_primario or "[R] JOGAR NOVAMENTE", True),
+            ("[ESC] MENU PRINCIPAL", False),
+        ]
+
+    return [
+        ("[R] TENTAR NOVAMENTE", True),
+        ("[ESC] MENU PRINCIPAL", False),
+    ]
+
+
+def desenhar_botoes(elapsed, vitoria, texto_primario=None):
     alpha = max(0.0, min(1.0, (elapsed - 1.0) * 2.0))
     if alpha <= 0:
         return
 
-    botoes = [("[R] JOGAR NOVAMENTE", True), ("[ESC] MENU PRINCIPAL", False)] if vitoria \
-        else [("[R] TENTAR NOVAMENTE", True), ("[ESC] MENU PRINCIPAL", False)]
+    botoes = botoes_para_tela(vitoria, texto_primario)
 
     for i, (texto, primario) in enumerate(botoes):
         by  = -0.14 - i * 0.10
@@ -398,7 +410,7 @@ class Particula:
 # ─────────────────────────────────────────────
 #  FUNÇÃO PRINCIPAL — USE ESSA NO mario.py
 # ─────────────────────────────────────────────
-def mostrar_tela(vitoria: bool, janela=None) -> bool:
+def mostrar_tela(vitoria: bool, janela=None, texto_primario=None) -> bool:
     """
     Exibe a tela de vitória ou derrota com visual dark gothic.
 
@@ -450,7 +462,7 @@ def mostrar_tela(vitoria: bool, janela=None) -> bool:
         desenhar_fundo(elapsed, vitoria)
         desenhar_painel(elapsed, vitoria)
         desenhar_titulo(elapsed, vitoria)
-        desenhar_botoes(elapsed, vitoria)
+        desenhar_botoes(elapsed, vitoria, texto_primario)
 
         for p in particulas:
             r, g, b = p.cor
