@@ -1,0 +1,1 @@
+Programa inicialmente pensando para replicar o formato do jogo Super Mario Bros utilizando a API do OpenGL para Python. Posteriomente, optamos por seguir com outra estética, mas ainda mantendo parte do formato de gameplay.
