@@ -59,17 +59,14 @@ O jogo foi desenvolvido com foco em:
 
 ## 📷 Screenshots do Jogo em Execução
 
-1. Tela Inicial
+## 1. Tela Inicial
 <img width="1919" height="1079" alt="Screenshot_1" src="https://github.com/user-attachments/assets/4fd9e37d-59b4-43d4-aa64-191fd2c217e2" />
 
-
-2. Jogo em Andamento
+## 2. Jogo em Andamento
 <img width="1919" height="1079" alt="Screenshot_4" src="https://github.com/user-attachments/assets/740c05eb-7ce3-4d5c-8f88-4654d702a68b" />
 
-
-3. Vitória
+## 3. Vitória
 <img width="1919" height="1079" alt="Screenshot_5" src="https://github.com/user-attachments/assets/1399c2dc-b375-469c-873a-e837250cfe24" />
 
-
-4. Derrota
+## 4. Derrota
 <img width="1919" height="1079" alt="Screenshot_3" src="https://github.com/user-attachments/assets/8009b064-2764-4d6a-9950-01025eaf3f4b" />
