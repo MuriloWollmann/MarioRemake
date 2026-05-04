@@ -1,4 +1,5 @@
 from pathlib import Path
+import random
 import time
 
 
@@ -7,12 +8,15 @@ from OpenGL.GL import *
 from PIL import Image
 import numpy as np
 
-from tela_vitoria_derrota import mostrar_tela
+from tela_vitoria_derrota import mostrar_tela, desenhar_texto, texto_larg
 
 from game_logic import (
     GROUND_Y,
     HUNTER_H,
     HUNTER_SHOOT_INTERVAL,
+    HUNTER_TYPE_BRUTE,
+    HUNTER_TYPE_GUNNER,
+    HUNTER_TYPE_SCOUT,
     HUNTER_W,
     GameState,
     blood_frame_index,
@@ -26,6 +30,13 @@ from game_logic import (
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 ASSET_DIR = PROJECT_ROOT / "assets"
+CENARIO_ASSETS = (
+    ("fundo.png", "chao.png"),
+    ("fundo2.png", "chao2.png"),
+    ("fundo3.png", "chao3.png"),
+    ("fundo4.png", "chao4.png"),
+    ("fundo5.png", "chao5.png"),
+)
 FULLSCREEN = True
 WINDOWED_WIDTH = 1280
 WINDOWED_HEIGHT = 720
@@ -63,6 +74,9 @@ HUD_VIDA_TAMANHO = 0.12
 HUD_VIDA_ESPACAMENTO = 0.02
 HUD_VIDA_X = -0.95
 HUD_VIDA_TOPO = 0.97
+HUD_FASE_TAMANHO = 0.003
+HUD_FASE_DIREITA = 0.95
+HUD_FASE_Y = 0.88
 
 BULLET_DRAW_SIZE = 0.08
 HUNTER_DEATH_DRAW_W = 0.62
@@ -70,6 +84,11 @@ HUNTER_DEATH_DRAW_H = 0.46
 HUNTER_AIM_WINDOW = 0.45
 HUNTER_DRAW_W = 0.30
 HUNTER_DRAW_H = 0.40
+HUNTER_DRAW_SIZES = {
+    HUNTER_TYPE_GUNNER: (HUNTER_DRAW_W, HUNTER_DRAW_H),
+    HUNTER_TYPE_SCOUT: (0.26, 0.37),
+    HUNTER_TYPE_BRUTE: (0.38, 0.47),
+}
 PLAYER_GRASS_SINK = 0.12
 HUNTER_GRASS_SINK = 0.10
 PLAYER_HITBOX_MARGIN_X = 0.12
@@ -172,6 +191,10 @@ def calcular_y_visual_cacador(y):
     return y - HUNTER_GRASS_SINK
 
 
+def tamanho_desenho_cacador(enemy_type):
+    return HUNTER_DRAW_SIZES.get(enemy_type, HUNTER_DRAW_SIZES[HUNTER_TYPE_GUNNER])
+
+
 def desenhar_player(frames_run, frames_jump, tex_idle, x, y, no_chao, movendo, virado_esquerda, frame_anim):
     glEnable(GL_TEXTURE_2D)
     glColor3f(1, 1, 1)
@@ -233,6 +256,25 @@ def desenhar_hud_vidas(tex_vida, vidas):
     glDisable(GL_TEXTURE_2D)
 
 
+def texto_fase(fase):
+    return f"FASE {max(1, int(fase))}"
+
+
+def calcular_posicao_hud_fase(fase):
+    texto = texto_fase(fase)
+    x = HUD_FASE_DIREITA - texto_larg(texto, HUD_FASE_TAMANHO)
+    return (round(x, 3), HUD_FASE_Y)
+
+
+def desenhar_hud_fase(fase):
+    glDisable(GL_TEXTURE_2D)
+    texto = texto_fase(fase)
+    x, y = calcular_posicao_hud_fase(fase)
+
+    desenhar_texto(texto, x + 0.004, y - 0.004, HUD_FASE_TAMANHO, 0.0, 0.0, 0.0, 0.55)
+    desenhar_texto(texto, x, y, HUD_FASE_TAMANHO, 1.0, 0.92, 0.55, 1.0)
+
+
 def calcular_hitbox_player(x, y):
     visual_y1 = calcular_y_visual_player(y)
     visual_y2 = visual_y1 + PLAYER_H
@@ -248,7 +290,13 @@ def calcular_camera_x(player_x):
     return max(0.0, player_x + CAMERA_LOOK_AHEAD)
 
 
-def selecionar_textura_cacador(hunter, tex_hunter_idle, tex_hunter_aim, tex_hunter_shoot, frame_anim):
+def selecionar_textura_cacador(hunter, tex_hunter_idle, tex_hunter_aim=None, tex_hunter_shoot=None, frame_anim=0):
+    if isinstance(tex_hunter_idle, dict):
+        texturas = tex_hunter_idle.get(hunter.enemy_type, tex_hunter_idle[HUNTER_TYPE_GUNNER])
+        tex_hunter_idle = texturas["idle"]
+        tex_hunter_aim = texturas["aim"]
+        tex_hunter_shoot = texturas["shoot"]
+
     if hunter.shoot_flash > 0:
         return tex_hunter_shoot
 
@@ -258,19 +306,20 @@ def selecionar_textura_cacador(hunter, tex_hunter_idle, tex_hunter_aim, tex_hunt
     return tex_hunter_idle[frame_anim % len(tex_hunter_idle)]
 
 
-def desenhar_cacadores(hunters, tex_hunter_idle, tex_hunter_aim, tex_hunter_shoot, camera_x, frame_anim):
+def desenhar_cacadores(hunters, texturas_inimigos, camera_x, frame_anim):
     glEnable(GL_TEXTURE_2D)
     glColor3f(1, 1, 1)
 
     for hunter in hunters:
         glBindTexture(
             GL_TEXTURE_2D,
-            selecionar_textura_cacador(hunter, tex_hunter_idle, tex_hunter_aim, tex_hunter_shoot, frame_anim),
+            selecionar_textura_cacador(hunter, texturas_inimigos, frame_anim=frame_anim),
         )
 
-        x_tela = hunter.x - camera_x - (HUNTER_DRAW_W - HUNTER_W) / 2
+        draw_w, draw_h = tamanho_desenho_cacador(hunter.enemy_type)
+        x_tela = hunter.x - camera_x - (draw_w - HUNTER_W) / 2
         visual_y = calcular_y_visual_cacador(hunter.y)
-        desenhar_quad_texturizado(x_tela, visual_y, x_tela + HUNTER_DRAW_W, visual_y + HUNTER_DRAW_H)
+        desenhar_quad_texturizado(x_tela, visual_y, x_tela + draw_w, visual_y + draw_h)
 
     glDisable(GL_TEXTURE_2D)
 
@@ -301,24 +350,54 @@ def desenhar_mortes_cacador(effects, tex_hunter_death, camera_x):
     glDisable(GL_TEXTURE_2D)
 
 
+def escolher_indice_cenario(fase, total_cenarios, indice_atual=None):
+    if total_cenarios <= 0:
+        raise ValueError("E preciso ter pelo menos um cenario.")
+
+    if fase <= 1 or indice_atual is None:
+        return 0
+
+    opcoes = [indice for indice in range(total_cenarios) if indice != indice_atual]
+    return random.choice(opcoes or [indice_atual])
+
+
+def criar_estado_fase(vidas, fase):
+    return GameState(vidas=vidas, nivel=fase)
+
+
+def carregar_texturas_inimigo(prefix):
+    return {
+        "idle": [
+            carregar_textura(f"{prefix}_idle1.png"),
+            carregar_textura(f"{prefix}_idle2.png"),
+            carregar_textura(f"{prefix}_idle3.png"),
+        ],
+        "aim": [
+            carregar_textura(f"{prefix}_aim1.png"),
+            carregar_textura(f"{prefix}_aim2.png"),
+            carregar_textura(f"{prefix}_aim3.png"),
+            carregar_textura(f"{prefix}_aim4.png"),
+        ],
+        "shoot": carregar_textura(f"{prefix}_shoot.png"),
+    }
+
+
 def carregar_texturas_do_jogo():
-    tex_fundo = carregar_textura("fundo.png", repeat_x=True)
-    tex_chao = carregar_textura("chao.png", repeat_x=True)
+    cenarios = [
+        (
+            carregar_textura(fundo, repeat_x=True),
+            carregar_textura(chao, repeat_x=True),
+        )
+        for fundo, chao in CENARIO_ASSETS
+    ]
     tex_bandeira = carregar_textura("bandeira.png")
     tex_vida = carregar_textura("vida.png")
     tex_idle = carregar_textura("player.png")
-    tex_hunter_idle = [
-        carregar_textura("hunter_idle1.png"),
-        carregar_textura("hunter_idle2.png"),
-        carregar_textura("hunter_idle3.png"),
-    ]
-    tex_hunter_aim = [
-        carregar_textura("hunter_aim1.png"),
-        carregar_textura("hunter_aim2.png"),
-        carregar_textura("hunter_aim3.png"),
-        carregar_textura("hunter_aim4.png"),
-    ]
-    tex_hunter_shoot = carregar_textura("hunter_shoot.png")
+    texturas_inimigos = {
+        HUNTER_TYPE_GUNNER: carregar_texturas_inimigo("hunter"),
+        HUNTER_TYPE_SCOUT: carregar_texturas_inimigo("hunter_scout"),
+        HUNTER_TYPE_BRUTE: carregar_texturas_inimigo("hunter_brute"),
+    }
     tex_bullet = carregar_textura("bullet.png")
     tex_hunter_death = [
         carregar_textura("hunter_death1.png"),
@@ -338,16 +417,13 @@ def carregar_texturas_do_jogo():
     ]
 
     return (
-        tex_fundo,
-        tex_chao,
+        cenarios,
         tex_bandeira,
         tex_vida,
         tex_idle,
         frames_run,
         frames_jump,
-        tex_hunter_idle,
-        tex_hunter_aim,
-        tex_hunter_shoot,
+        texturas_inimigos,
         tex_bullet,
         tex_hunter_death,
     )
@@ -419,16 +495,13 @@ def main():
 
     try:
         (
-            tex_fundo,
-            tex_chao,
+            cenarios,
             tex_bandeira,
             tex_vida,
             tex_idle,
             frames_run,
             frames_jump,
-            tex_hunter_idle,
-            tex_hunter_aim,
-            tex_hunter_shoot,
+            texturas_inimigos,
             tex_bullet,
             tex_hunter_death,
         ) = carregar_texturas_do_jogo()
@@ -437,7 +510,10 @@ def main():
         glfw.terminate()
         return
 
-    estado_jogo = GameState(vidas=VIDAS_INICIAIS)
+    fase_atual = 1
+    indice_cenario = escolher_indice_cenario(fase_atual, len(cenarios))
+    estado_jogo = criar_estado_fase(VIDAS_INICIAIS, fase_atual)
+    glfw.set_window_title(janela, f"Jogo - Fase {fase_atual}")
 
     x = 0.0
     y = CHAO_TOPO
@@ -445,7 +521,6 @@ def main():
     no_chao = True
 
     camera_x = 0.0
-    venceu = False
 
     espaco_pressionado = False
     virado_esquerda = False
@@ -508,27 +583,45 @@ def main():
             x = camera_x - WORLD_VIEW_HALF_WIDTH
 
         if x >= CHEGADA_X:
-            venceu = True
+            fase_atual += 1
+            indice_cenario = escolher_indice_cenario(fase_atual, len(cenarios), indice_cenario)
+            estado_jogo = criar_estado_fase(estado_jogo.vidas, fase_atual)
+            glfw.set_window_title(janela, f"Jogo - Fase {fase_atual}")
+
+            x = 0.0
+            y = CHAO_TOPO
+            vel_y = 0.0
+            no_chao = True
+            camera_x = 0.0
+            espaco_pressionado = False
+            virado_esquerda = False
+            frame_anim = 0
+            tempo_anim = 0.0
+            tempo_anterior = time.time()
+            continue
 
         player_box = calcular_hitbox_player(x, y)
         player_center = center_of_box(player_box)
 
-        update_hunters_and_spawns(estado_jogo, dt, camera_x, player_center)
+        update_hunters_and_spawns(estado_jogo, dt, camera_x, player_center, level=fase_atual)
         update_player_hunter_combat(estado_jogo, player_box)
         update_bullets_and_damage(estado_jogo, dt, player_box)
         update_blood_effects(estado_jogo, dt)
+
+        tex_fundo, tex_chao = cenarios[indice_cenario]
 
         configurar_projecao_mundo()
         desenhar_fundo(tex_fundo, camera_x)
         desenhar_chao(tex_chao, camera_x)
         desenhar_chegada(tex_bandeira, CHEGADA_X, camera_x)
         desenhar_mortes_cacador(estado_jogo.blood_effects, tex_hunter_death, camera_x)
-        desenhar_cacadores(estado_jogo.hunters, tex_hunter_idle, tex_hunter_aim, tex_hunter_shoot, camera_x, frame_anim)
+        desenhar_cacadores(estado_jogo.hunters, texturas_inimigos, camera_x, frame_anim)
         desenhar_balas(estado_jogo.bullets, tex_bullet, camera_x)
         desenhar_player(frames_run, frames_jump, tex_idle, x - camera_x, y, no_chao, movendo, virado_esquerda, frame_anim)
 
         configurar_projecao_hud()
         desenhar_hud_vidas(tex_vida, estado_jogo.vidas)
+        desenhar_hud_fase(fase_atual)
 
         glfw.swap_buffers(janela)
         glfw.poll_events()
@@ -546,20 +639,6 @@ def main():
 
              else:
                 glfw.set_window_should_close(janela, True)
-
-        if venceu:
-              reiniciar = mostrar_tela(vitoria=True, janela=janela)
-
-              if reiniciar:
-                glfw.destroy_window(janela)
-                glfw.terminate()
-                main()
-                return
-
-              else:
-                glfw.set_window_should_close(janela, True)
-        
- 
 
     glfw.terminate()
 
