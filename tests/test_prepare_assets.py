@@ -6,6 +6,8 @@ from tools.prepare_assets import (
     HEALTH_BAR_SOURCE_NAME,
     HUNTER_DEATH_SHEET_FRAMES,
     HUNTER_SHEET_FRAMES,
+    MENU_BACKGROUND_SOURCE_NAME,
+    MENU_SELECTED_BUTTON_SOURCE_NAME,
     PLAYER_ATTACK_SHEET_FRAMES,
     create_blood_frame_image,
     create_bullet_image,
@@ -14,6 +16,8 @@ from tools.prepare_assets import (
     create_hunter_death_sheet_frames,
     create_hunter_sheet_frames,
     create_life_icon_image,
+    create_menu_background_image,
+    create_menu_selected_button_image,
     create_player_attack_sheet_frames,
     remove_hunter_sheet_background,
 )
@@ -44,6 +48,45 @@ class PrepareAssetsTest(unittest.TestCase):
             HEALTH_BAR_SOURCE_NAME,
             "ChatGPT Image 3 de mai. de 2026, 22_21_29.png",
         )
+
+    def test_usa_imagens_reais_do_menu_inicial(self):
+        self.assertEqual(
+            MENU_BACKGROUND_SOURCE_NAME,
+            "ChatGPT Image 3 de mai. de 2026, 22_42_54.png",
+        )
+        self.assertEqual(
+            MENU_SELECTED_BUTTON_SOURCE_NAME,
+            "ChatGPT Image 3 de mai. de 2026, 22_45_49.png",
+        )
+
+    def test_recorta_botao_selecionado_do_menu_com_transparencia(self):
+        button = create_menu_selected_button_image()
+
+        self.assertEqual(button.mode, "RGBA")
+        self.assertGreater(button.width, button.height)
+        min_alpha, max_alpha = button.getchannel("A").getextrema()
+        self.assertEqual(min_alpha, 0)
+        self.assertEqual(max_alpha, 255)
+
+    def test_botao_selecionado_do_menu_nao_deixa_halo_branco_na_borda(self):
+        button = create_menu_selected_button_image()
+        border_height = max(1, button.height // 8)
+        pale_border_pixels = 0
+
+        for y in list(range(border_height)) + list(range(button.height - border_height, button.height)):
+            for x in range(button.width):
+                r, g, b, a = button.getpixel((x, y))
+                if a > 20 and r >= 245 and g >= 210 and b >= 205:
+                    pale_border_pixels += 1
+
+        self.assertEqual(pale_border_pixels, 0)
+
+    def test_menu_de_fundo_e_imagem_inteira(self):
+        background = create_menu_background_image()
+
+        self.assertEqual(background.mode, "RGBA")
+        self.assertGreaterEqual(background.width, 1600)
+        self.assertGreaterEqual(background.height, 900)
 
     def test_mapeia_os_4_estados_da_barra_de_vida(self):
         self.assertEqual(

@@ -1,4 +1,5 @@
 from pathlib import Path
+from collections import deque
 
 from PIL import Image, ImageDraw
 
@@ -16,6 +17,10 @@ FLAG_SOURCE_NAME = "ChatGPT Image 3 de mai. de 2026, 16_26_10.png"
 FLAG_SOURCE_PATH = DOWNLOADS_DIR / FLAG_SOURCE_NAME
 HEALTH_BAR_SOURCE_NAME = "ChatGPT Image 3 de mai. de 2026, 22_21_29.png"
 HEALTH_BAR_SOURCE_PATH = DOWNLOADS_DIR / HEALTH_BAR_SOURCE_NAME
+MENU_BACKGROUND_SOURCE_NAME = "ChatGPT Image 3 de mai. de 2026, 22_42_54.png"
+MENU_BACKGROUND_SOURCE_PATH = DOWNLOADS_DIR / MENU_BACKGROUND_SOURCE_NAME
+MENU_SELECTED_BUTTON_SOURCE_NAME = "ChatGPT Image 3 de mai. de 2026, 22_45_49.png"
+MENU_SELECTED_BUTTON_SOURCE_PATH = DOWNLOADS_DIR / MENU_SELECTED_BUTTON_SOURCE_NAME
 HUNTER_SHEET_CROP_MARGIN = 8
 
 
@@ -159,6 +164,146 @@ def create_flag() -> None:
     image = create_flag_image()
     image.save(output_path)
     print(f"{FLAG_SOURCE_NAME} -> assets/bandeira.png")
+
+
+def create_menu_background_image(source_path: Path = MENU_BACKGROUND_SOURCE_PATH) -> Image.Image:
+    if not source_path.exists():
+        raise FileNotFoundError(
+            f"Imagem de fundo do menu nao encontrada: {source_path}\n"
+            f"Coloque o arquivo '{MENU_BACKGROUND_SOURCE_NAME}' em {DOWNLOADS_DIR}."
+        )
+
+    with Image.open(source_path) as image:
+        return image.convert("RGBA")
+
+
+def remove_menu_button_background(image: Image.Image) -> Image.Image:
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            r, g, b, a = pixels[x, y]
+            neutral_light = r >= 218 and g >= 218 and b >= 218 and max(r, g, b) - min(r, g, b) <= 36
+            pale_outer_glow = (
+                r >= 245
+                and g >= 210
+                and b >= 205
+                and (
+                    y <= rgba.height * 0.27
+                    or y >= rgba.height * 0.73
+                    or x <= rgba.width * 0.12
+                    or x >= rgba.width * 0.88
+                )
+            )
+            if neutral_light or pale_outer_glow:
+                pixels[x, y] = (0, 0, 0, 0)
+
+    return rgba
+
+
+def remove_edge_connected_menu_glow(image: Image.Image) -> Image.Image:
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    width, height = rgba.size
+
+    def is_glow_pixel(x: int, y: int) -> bool:
+        r, g, b, a = pixels[x, y]
+        if a <= 20:
+            return False
+
+        pale_warm = r >= 220 and g >= 130 and b >= 120 and (r - g) <= 125
+        bright_red = r >= 190 and (r - g) >= 75 and (r - b) >= 70 and g >= 25 and b >= 25
+        return pale_warm or bright_red
+
+    queue = deque()
+    visited = set()
+
+    for x in range(width):
+        for y in (0, height - 1):
+            if is_glow_pixel(x, y):
+                visited.add((x, y))
+                queue.append((x, y))
+
+    for y in range(height):
+        for x in (0, width - 1):
+            if (x, y) not in visited and is_glow_pixel(x, y):
+                visited.add((x, y))
+                queue.append((x, y))
+
+    while queue:
+        x, y = queue.popleft()
+        pixels[x, y] = (0, 0, 0, 0)
+
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if 0 <= nx < width and 0 <= ny < height and (nx, ny) not in visited and is_glow_pixel(nx, ny):
+                visited.add((nx, ny))
+                queue.append((nx, ny))
+
+    return rgba
+
+
+def remove_small_alpha_components(image: Image.Image, min_pixels: int = 24) -> Image.Image:
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    width, height = rgba.size
+    visited = set()
+
+    for start_y in range(height):
+        for start_x in range(width):
+            if (start_x, start_y) in visited or pixels[start_x, start_y][3] <= 20:
+                continue
+
+            component = []
+            queue = deque([(start_x, start_y)])
+            visited.add((start_x, start_y))
+
+            while queue:
+                x, y = queue.popleft()
+                component.append((x, y))
+
+                for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                    if 0 <= nx < width and 0 <= ny < height and (nx, ny) not in visited:
+                        visited.add((nx, ny))
+                        if pixels[nx, ny][3] > 20:
+                            queue.append((nx, ny))
+
+            if len(component) < min_pixels:
+                for x, y in component:
+                    pixels[x, y] = (0, 0, 0, 0)
+
+    return rgba
+
+
+def create_menu_selected_button_image(source_path: Path = MENU_SELECTED_BUTTON_SOURCE_PATH) -> Image.Image:
+    if not source_path.exists():
+        raise FileNotFoundError(
+            f"Imagem do botao selecionado nao encontrada: {source_path}\n"
+            f"Coloque o arquivo '{MENU_SELECTED_BUTTON_SOURCE_NAME}' em {DOWNLOADS_DIR}."
+        )
+
+    with Image.open(source_path) as image:
+        button = remove_menu_button_background(image)
+
+    alpha_bbox = button.getchannel("A").getbbox()
+    if alpha_bbox is None:
+        return button
+
+    button = remove_edge_connected_menu_glow(button.crop(alpha_bbox))
+    button = remove_small_alpha_components(button)
+    alpha_bbox = button.getchannel("A").getbbox()
+    if alpha_bbox is None:
+        return button
+
+    return button.crop(alpha_bbox)
+
+
+def create_menu_assets() -> None:
+    create_menu_background_image().save(ASSET_DIR / "menu_fundo.png")
+    print(f"{MENU_BACKGROUND_SOURCE_NAME} -> assets/menu_fundo.png")
+
+    create_menu_selected_button_image().save(ASSET_DIR / "menu_botao_selecionado.png")
+    print(f"{MENU_SELECTED_BUTTON_SOURCE_NAME} -> assets/menu_botao_selecionado.png")
 
 
 def create_life_icon_image() -> Image.Image:
@@ -372,6 +517,7 @@ def main() -> None:
         convert_asset(output_name, source_name)
 
     create_flag()
+    create_menu_assets()
     create_life_icon()
     create_health_bar_assets()
     create_player_attack_assets()

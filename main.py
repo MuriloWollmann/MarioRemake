@@ -94,6 +94,17 @@ HUD_FASE_TAMANHO = 0.003
 HUD_FASE_DIREITA = 0.95
 HUD_FASE_Y = 0.88
 
+# Menu inicial
+MENU_STATE_NORMAL = "normal"
+MENU_STATE_SELECTED = "selected"
+MENU_STATE_PRESSING = "pressing"
+MENU_STATE_START = "start"
+MENU_BUTTON_CENTER_Y = -0.635
+MENU_BUTTON_DRAW_W = 0.76
+MENU_BUTTON_DRAW_H = 0.21
+MENU_PRESSED_SCALE = 0.92
+MENU_PRESS_DURATION = 0.12
+
 BULLET_DRAW_SIZE = 0.08
 HUNTER_DEATH_DRAW_W = 0.62
 HUNTER_DEATH_DRAW_H = 0.46
@@ -307,6 +318,59 @@ def vida_texture_name(vidas):
     return f"vida{vidas_visuais}.png"
 
 
+def avancar_estado_menu(estado):
+    if estado == MENU_STATE_NORMAL:
+        return MENU_STATE_SELECTED
+
+    if estado == MENU_STATE_SELECTED:
+        return MENU_STATE_PRESSING
+
+    return estado
+
+
+def menu_deve_iniciar(estado):
+    return estado == MENU_STATE_START
+
+
+def atualizar_pressao_menu(estado, tempo_pressao, dt):
+    if estado != MENU_STATE_PRESSING:
+        return estado, tempo_pressao
+
+    tempo_pressao = max(0.0, tempo_pressao - dt)
+    if tempo_pressao <= 0.0:
+        return MENU_STATE_START, 0.0
+
+    return estado, tempo_pressao
+
+
+def calcular_tamanho_botao_menu(pressionado):
+    escala = MENU_PRESSED_SCALE if pressionado else 1.0
+    return MENU_BUTTON_DRAW_W * escala, MENU_BUTTON_DRAW_H * escala
+
+
+def desenhar_menu_inicial(tex_menu_fundo, tex_menu_botao_selecionado, selecionado, pressionado=False):
+    configurar_projecao_hud()
+    glEnable(GL_TEXTURE_2D)
+    glColor3f(1, 1, 1)
+
+    glBindTexture(GL_TEXTURE_2D, tex_menu_fundo)
+    desenhar_quad_texturizado(-1.0, -1.0, 1.0, 1.0)
+
+    if selecionado:
+        draw_w, draw_h = calcular_tamanho_botao_menu(pressionado)
+        half_w = draw_w / 2
+        half_h = draw_h / 2
+        glBindTexture(GL_TEXTURE_2D, tex_menu_botao_selecionado)
+        desenhar_quad_texturizado(
+            -half_w,
+            MENU_BUTTON_CENTER_Y - half_h,
+            half_w,
+            MENU_BUTTON_CENTER_Y + half_h,
+        )
+
+    glDisable(GL_TEXTURE_2D)
+
+
 def texto_fase(fase):
     return f"FASE {max(1, int(fase))}"
 
@@ -430,6 +494,13 @@ def carregar_texturas_inimigo(prefix):
         ],
         "shoot": carregar_textura(f"{prefix}_shoot.png"),
     }
+
+
+def carregar_texturas_menu():
+    return (
+        carregar_textura("menu_fundo.png"),
+        carregar_textura("menu_botao_selecionado.png"),
+    )
 
 
 def carregar_texturas_do_jogo():
@@ -557,6 +628,47 @@ def texto_botao_vitoria_fase(fase_atual):
     return "[R] JOGAR NOVAMENTE"
 
 
+def mostrar_menu_inicial(janela, tex_menu_fundo, tex_menu_botao_selecionado):
+    estado_menu = MENU_STATE_NORMAL
+    enter_pressionado = False
+    tempo_pressao = 0.0
+    tempo_anterior = time.time()
+
+    while not glfw.window_should_close(janela) and not menu_deve_iniciar(estado_menu):
+        tempo_atual = time.time()
+        dt = min(tempo_atual - tempo_anterior, 0.05)
+        tempo_anterior = tempo_atual
+
+        if glfw.get_key(janela, glfw.KEY_ESCAPE) == glfw.PRESS:
+            glfw.set_window_should_close(janela, True)
+            return False
+
+        enter_ativo = glfw.get_key(janela, glfw.KEY_ENTER) == glfw.PRESS
+        if enter_ativo and not enter_pressionado:
+            estado_menu = avancar_estado_menu(estado_menu)
+            if estado_menu == MENU_STATE_PRESSING:
+                tempo_pressao = MENU_PRESS_DURATION
+            enter_pressionado = True
+        elif not enter_ativo:
+            enter_pressionado = False
+
+        pressionado = estado_menu == MENU_STATE_PRESSING
+        glClearColor(0.0, 0.0, 0.0, 1.0)
+        glClear(GL_COLOR_BUFFER_BIT)
+        desenhar_menu_inicial(
+            tex_menu_fundo,
+            tex_menu_botao_selecionado,
+            estado_menu in (MENU_STATE_SELECTED, MENU_STATE_PRESSING),
+            pressionado=pressionado,
+        )
+        glfw.swap_buffers(janela)
+        glfw.poll_events()
+
+        estado_menu, tempo_pressao = atualizar_pressao_menu(estado_menu, tempo_pressao, dt)
+
+    return menu_deve_iniciar(estado_menu)
+
+
 def main():
     if not glfw.init():
         print("Erro ao inicializar GLFW.")
@@ -579,6 +691,19 @@ def main():
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
     iniciar_audio()
     tocar_musica_fundo()
+
+    try:
+        tex_menu_fundo, tex_menu_botao_selecionado = carregar_texturas_menu()
+    except AssetError as exc:
+        print(exc)
+        encerrar_audio()
+        glfw.terminate()
+        return
+
+    if not mostrar_menu_inicial(janela, tex_menu_fundo, tex_menu_botao_selecionado):
+        encerrar_audio()
+        glfw.terminate()
+        return
 
     try:
         (

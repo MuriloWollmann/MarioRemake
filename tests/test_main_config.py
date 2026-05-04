@@ -10,6 +10,13 @@ from main import (
     FULLSCREEN,
     HUNTER_DRAW_H,
     HUNTER_DRAW_W,
+    MENU_BUTTON_DRAW_H,
+    MENU_BUTTON_DRAW_W,
+    MENU_STATE_NORMAL,
+    MENU_STATE_PRESSING,
+    MENU_STATE_SELECTED,
+    MENU_STATE_START,
+    MENU_PRESSED_SCALE,
     PLAYER_ATTACK_DRAW_H,
     PLAYER_ATTACK_DRAW_W,
     PLAYER_ATTACK_DURATION,
@@ -22,9 +29,13 @@ from main import (
     TOTAL_FASES,
     WORLD_VIEW_HALF_HEIGHT,
     WORLD_VIEW_HALF_WIDTH,
+    avancar_estado_menu,
+    atualizar_pressao_menu,
     calcular_camera_x,
     calcular_hitbox_player,
+    calcular_tamanho_botao_menu,
     deve_continuar_para_proxima_fase,
+    menu_deve_iniciar,
     player_attack_frame_index,
     texto_botao_vitoria_fase,
     vida_texture_name,
@@ -146,6 +157,50 @@ class MainConfigTest(unittest.TestCase):
         self.assertLess(
             source.index("continuar = mostrar_tela("),
             source.index("avancar_para_proxima_fase("),
+        )
+
+    def test_menu_inicial_enter_seleciona_e_depois_inicia(self):
+        self.assertEqual(avancar_estado_menu(MENU_STATE_NORMAL), MENU_STATE_SELECTED)
+        self.assertEqual(avancar_estado_menu(MENU_STATE_SELECTED), MENU_STATE_PRESSING)
+        self.assertEqual(avancar_estado_menu(MENU_STATE_PRESSING), MENU_STATE_PRESSING)
+        self.assertEqual(avancar_estado_menu(MENU_STATE_START), MENU_STATE_START)
+        self.assertFalse(menu_deve_iniciar(MENU_STATE_NORMAL))
+        self.assertFalse(menu_deve_iniciar(MENU_STATE_SELECTED))
+        self.assertFalse(menu_deve_iniciar(MENU_STATE_PRESSING))
+        self.assertTrue(menu_deve_iniciar(MENU_STATE_START))
+
+    def test_menu_so_inicia_depois_do_frame_do_botao_pressionado(self):
+        estado, tempo = atualizar_pressao_menu(MENU_STATE_PRESSING, 0.08, 0.03)
+        self.assertEqual(estado, MENU_STATE_PRESSING)
+        self.assertGreater(tempo, 0.0)
+
+        estado, tempo = atualizar_pressao_menu(MENU_STATE_PRESSING, tempo, 0.08)
+        self.assertEqual(estado, MENU_STATE_START)
+        self.assertEqual(tempo, 0.0)
+
+    def test_botao_selecionado_do_menu_fica_sobre_o_botao_normal(self):
+        self.assertGreater(MENU_BUTTON_DRAW_W, MENU_BUTTON_DRAW_H)
+        self.assertGreaterEqual(MENU_BUTTON_DRAW_W, 0.72)
+        self.assertGreaterEqual(MENU_BUTTON_DRAW_H, 0.20)
+
+    def test_botao_do_menu_diminui_quando_pressionado(self):
+        normal_w, normal_h = calcular_tamanho_botao_menu(pressionado=False)
+        pressed_w, pressed_h = calcular_tamanho_botao_menu(pressionado=True)
+
+        self.assertLess(MENU_PRESSED_SCALE, 1.0)
+        self.assertLess(pressed_w, normal_w)
+        self.assertLess(pressed_h, normal_h)
+        self.assertGreater(pressed_w, normal_w * 0.85)
+        self.assertGreater(pressed_h, normal_h * 0.85)
+
+    def test_main_mostra_menu_antes_de_carregar_jogo(self):
+        source = inspect.getsource(main.main)
+
+        self.assertIn("mostrar_menu_inicial(", source)
+        self.assertIn("carregar_texturas_do_jogo()", source)
+        self.assertLess(
+            source.index("mostrar_menu_inicial("),
+            source.index("carregar_texturas_do_jogo()"),
         )
 
 
