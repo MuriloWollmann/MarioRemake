@@ -54,6 +54,7 @@ O jogo foi desenvolvido com foco em:
 - OpenGL
 - GLFW
 - PIL / NumPy
+- Pygame
 
 ---
 
